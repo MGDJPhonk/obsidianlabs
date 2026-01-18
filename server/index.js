@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 4000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 app.use(cors());
+app.use(express.json());
 
 let cachedReleases = null;
 let cachedAt = 0;
@@ -145,6 +146,98 @@ app.get("/api/releases", async (_req, res) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+const postToDiscord = async (payload) => {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    throw new Error("Missing DISCORD_WEBHOOK_URL environment variable.");
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Discord webhook error: ${errorText}`);
+  }
+};
+
+app.post("/api/submit", async (req, res) => {
+  const {
+    name,
+    email,
+    artistName,
+    projectTitle,
+    links,
+    message,
+    confirmRights,
+  } = req.body;
+
+  if (!name || !email || !artistName || !links || !confirmRights) {
+    return res.status(400).json({
+      error: "Missing required submission fields.",
+    });
+  }
+
+  try {
+    await postToDiscord({
+      username: "Obsidian Labs Submissions",
+      embeds: [
+        {
+          title: "New Demo Submission",
+          color: 0x8a8a8a,
+          fields: [
+            { name: "Name", value: name, inline: true },
+            { name: "Email", value: email, inline: true },
+            { name: "Artist", value: artistName, inline: true },
+            { name: "Project", value: projectTitle || "Not provided" },
+            { name: "Links", value: links },
+            { name: "Message", value: message || "No message provided" },
+          ],
+        },
+      ],
+    });
+
+    return res.json({ status: "ok" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/contact", async (req, res) => {
+  const { name, email, topic, message } = req.body;
+
+  if (!name || !email || !message) {
+    return res.status(400).json({
+      error: "Missing required contact fields.",
+    });
+  }
+
+  try {
+    await postToDiscord({
+      username: "Obsidian Labs Contact",
+      embeds: [
+        {
+          title: "New Contact Message",
+          color: 0x6f6f6f,
+          fields: [
+            { name: "Name", value: name, inline: true },
+            { name: "Email", value: email, inline: true },
+            { name: "Topic", value: topic || "General" },
+            { name: "Message", value: message },
+          ],
+        },
+      ],
+    });
+
+    return res.json({ status: "ok" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {
